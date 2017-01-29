@@ -1,35 +1,23 @@
 import _ from 'underscore';
 
 // TODO:
-// * Make each level a pre-determined color.
 // * Having a level would be fun. (A simple 2d death match arena so players can hide behind walls and pillars and such)
-
+// * Make a unique weapon per level.
 
 class CoreGame extends Phaser.State {
     preload () {
         this.game.load.image('bullet', 'assets/sprites/bullet01.png');
     }
 
-    // TODO:
-    // * Put some dummy opponent shapes here.
-    // * Make the opponents blow up when we shoot at them.
-    // * We gain a level when we kill someone.
-
     create() {
         this.game.physics.startSystem(Phaser.Physics.ARCADE);
 
-        this.n = 4;
-        this.center = {x: 300, y: 300};
-        this.player = this.createPolygon(this.center, this.n);
-
-
-        // Init some enemies:
-        this.enemies = [];
-
-        for (var i = 0; i < 10; i++) {
-            var c = {x: 100 * i + 50, y: 50};
-            this.enemies.push(this.createPolygon(c, i + 3));
-        }
+        this.n = 2;
+        this.playerSprite = this.game.add.sprite(300, 300, this.createPolygon(this.n, true));
+        this.game.physics.enable(this.playerSprite, Phaser.Physics.ARCADE);
+        this.playerSprite.anchor.set(0.5);
+        this.playerSprite.body.drag.set(100);
+        this.playerSprite.body.maxVelocity.set(120);
 
         // Init some test bullets and a test weapon (This will eventually be specific to each level)
         this.weapon = this.game.add.weapon(30, 'bullet');
@@ -38,85 +26,54 @@ class CoreGame extends Phaser.State {
         this.weapon.bulletSpeed = 400;
         this.weapon.fireRate = 60;
         this.weapon.bulletAngleVariance = 10;
-        //this.weapon.trackSprite(this.player.polygon, 1, 1);
+        this.weapon.trackSprite(this.playerSprite, this.playerSprite.width/2, 0, true);
 
+        // Init some enemies:
+        this.enemies = this.game.add.group();
+        this.enemies.enableBody = true;
+        this.enemies.physicsBodyType = Phaser.Physics.ARCADE;
 
-        // TODO:
-        // * The easiest way to get what I want is with a big spritesheet with the transitions and I animate over
-        //   to the next level.
-        // * * This will give me the smooth animations as well as give me the power of the physics of the sprites.
-
+        for (var i = 0; i < 10; i++) {
+            var c = {x: 100 * i + 50, y: 50};
+            this.enemies.create(c.x, c.y, this.createPolygon(i + 3));
+        }
     }
 
     update() {
         this.listenForUserInput();
+
+        // Setup collision handlers:
+        this.game.physics.arcade.overlap(this.weapon.bullets, this.enemies, this.enemyCollisionHandler, null, this);
     }
 
     render() {
     }
 
-    listenForUserInput() {
-        var speed = 4;
-
-        // TODO: Make left and right rotate the shape and up and down accelerate and decelerate.
-        // LIke this: https://phaser.io/examples/v2/arcade-physics/angular-velocity
-
-        // TODO: A lot of this acceleration stuff comes for free if you are a sprite. Could I make a sprite out of
-        // my polygon coordinates?
-        // * Brainstorming:
-        // * * Maybe I could put an invisible 1 px X 1px sprite at the center of the polygon and then as that sprite moves
-        //     I also update the center position and re-draw the polygon.... I guess I could just have the polygon be a sprte itself instead of actually drawing it mathematically each time.
-
-        if (this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT)) {
-            this.center.x -= speed;
-            this.player.graphics.destroy();
-            this.player = this.createPolygon(this.center, this.n);
-        } else if (this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT)) {
-            this.center.x += speed;
-            this.player.graphics.destroy();
-            this.player = this.createPolygon(this.center, this.n);
-        }
-
-        if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP)) {
-            this.center.y -= speed;
-            this.player.graphics.destroy();
-            this.player = this.createPolygon(this.center, this.n);
-        } else if (this.game.input.keyboard.isDown(Phaser.Keyboard.DOWN)) {
-            this.center.y += speed;
-            this.player.graphics.destroy();
-            this.player = this.createPolygon(this.center, this.n);
-        }
-
-        if (this.input.keyboard.addKey(Phaser.KeyCode.SPACEBAR).isDown)
-        {
-            this.weapon.fireFrom.x = this.center.x;
-            this.weapon.fireFrom.y = this.center.y;
-            this.weapon.fire();
-        }
+    levelUp() {
+        this.n++;
+        this.playerSprite.loadTexture(this.createPolygon(this.n, true));
     }
 
-    movePolygon(deltaX, deltaY) {
-        for (var i = 0; i < this.testShape.points.length; i++) {
-            this.testShape.points[i].x += deltaX;
-            this.testShape.points[i].y += deltaY;
-        }
+    enemyCollisionHandler(bullet, enemy) {
+        // TODO: Make a cool death animation and explosion and shit.
+        enemy.destroy();
+        this.levelUp();
     }
 
-    createPolygon(center, n) {
-        var radius = 30;
-        var vertices = this.generateNGon({x: center.x, y: center.y}, radius, n);
-        var p = new Phaser.Polygon(vertices);
+    createPolygon(n, isPlayer) {
+        let bitmapDataWidth = 60;
+        let radius = bitmapDataWidth / 2;
+        let vertices = this.generateNGon({x: bitmapDataWidth / 2, y: bitmapDataWidth / 2}, radius, n);
+        let p = new Phaser.Polygon(vertices);
 
-        // TODO: Try only drawing the outside lines to see if that gives a better look.
-        var g = this.game.add.graphics(0, 0);
-        g.beginFill(0x42f4bf);
-        g.drawPolygon(p);
-        g.endFill();
+        let bmd = this.game.add.bitmapData(bitmapDataWidth, bitmapDataWidth);
 
-        return {
-            polygon: p,
-            graphics: g
-        };
+        for (let i = 0; i < p.points.length; i++) {
+            let p1 = p.points[i];
+            let p2 = p.points[(i+1) % p.points.length];
+            bmd.line(p1.x, p1.y, p2.x, p2.y, isPlayer ? 'green': 'red', 3);
+        }
+        return bmd;
     }
 
     generateNGon(center, radius, numSides) {
@@ -128,12 +85,33 @@ class CoreGame extends Phaser.State {
             var x = center.x + radius * Math.cos(theta);
             var y = center.y - radius * Math.sin(theta);
             points.push({x: x, y: y});
-
             theta += thetaDelta;
         }
         return points;
     }
 
+    listenForUserInput() {
+        if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP)) {
+            this.game.physics.arcade.accelerationFromRotation(
+                this.playerSprite.rotation, 200, this.playerSprite.body.acceleration
+            );
+        }
+        else {
+            this.playerSprite.body.acceleration.set(0);
+        }
+
+        if (this.game.input.keyboard.isDown(Phaser.Keyboard.LEFT)) {
+            this.playerSprite.body.angularVelocity = -300;
+        } else if (this.game.input.keyboard.isDown(Phaser.Keyboard.RIGHT)) {
+            this.playerSprite.body.angularVelocity = 300;
+        } else {
+            this.playerSprite.body.angularVelocity = 0;
+        }
+
+        if (this.game.input.keyboard.isDown(Phaser.Keyboard.SPACEBAR)) {
+            this.weapon.fire();
+        }
+    }
 }
 
 
