@@ -2,6 +2,7 @@ import _ from 'underscore';
 
 // TODO:
 // * Having a level would be fun. (A simple 2d death match arena so players can hide behind walls and pillars and such)
+// * * Levels should look kind of like the book drawings: https://upload.wikimedia.org/wikipedia/commons/d/d7/Houghton_EC85_Ab264_884f_-_Flatland%2C_cover.jpg
 // * Make a unique weapon per level.
 
 class CoreGame extends Phaser.State {
