@@ -1,22 +1,53 @@
 import _ from 'underscore';
+import PolyHelper from '../util/PolyHelper';
 
-// TODO:
-// * Having a level would be fun. (A simple 2d death match arena so players can hide behind walls and pillars and such)
-// * * Levels should look kind of like the book drawings: https://upload.wikimedia.org/wikipedia/commons/d/d7/Houghton_EC85_Ab264_884f_-_Flatland%2C_cover.jpg
-// * Make a unique weapon per level.
 
+// General todo:
+// * Make multiplayer
+// * * Make a server to sync game clients and store the level json, etc.
+
+// MOre paper ideas:
+// * The loading screen and title screen should look like a page from an old book: https://iiif.lib.harvard.edu/manifests/view/drs:12347081$7i
+// * I could even use that library to make it look like the pages are turning which would be fun.
 class CoreGame extends Phaser.State {
     preload () {
+        // TODO: Bullets should be geometrical to stay in theme.
+        // Maybe little squares?
         this.game.load.image('bullet', 'assets/sprites/bullet01.png');
+        this.game.load.image('inkBlot', 'assets/sprites/ink_blot_01.png');
+        this.game.load.image('inkBlot1', 'assets/sprites/ink_blot_02.png');
+        this.game.load.image('inkBlot2', 'assets/sprites/ink_blot_03.png');
+        this.game.load.image('inkBlot3', 'assets/sprites/ink_blot_04.png');
+        this.game.load.image('inkBlot4', 'assets/sprites/ink_blot_05.png');
+        this.game.load.image('inkBlot5', 'assets/sprites/ink_blot_06.png');
+        this.game.load.image('inkBlot6', 'assets/sprites/ink_blot_07.png');
+        this.game.load.image('wall', 'assets/sprites/wall.png');
+        this.game.load.image('line', 'assets/sprites/line_2.png');
+        this.game.load.image('paper', 'assets/sprites/paper.png');
+        this.game.load.image('level01_name', 'assets/sprites/level_01_name.png');
     }
 
     create() {
         this.game.physics.startSystem(Phaser.Physics.ARCADE);
+        this.polyHelp = new PolyHelper(this.game, Phaser);
+        this.paper = this.game.add.tileSprite(0, 0, this.game.width, this.game.height, 'paper');
+        this.levelName = this.game.add.sprite(0,0, 'level01_name');
 
-        this.n = 2;
-        this.playerSprite = this.game.add.sprite(300, 300, this.createPolygon(this.n, true));
+        this.walls = this.game.add.group();
+        // TODO: Create a level editor that outputs an array of Line points (line = {p1.x, p1.y, p2.x, p2.y})
+        // Then we will load the json file here.
+        //
+        //let w = this.walls.create(100, 100, this.createWall());
+        //this.game.physics.enable(w, Phaser.Physics.ARCADE);
+        //w.body.immovable = true;
+
+        this.level = 2;
+        // TODO: There can be organs inside of the shapes to give them directionality.
+        // * What would flat land organs even look like?
+        this.playerSprite = this.game.add.sprite(300, 300, this.polyHelp.createPolygon(this.level, true));
         this.game.physics.enable(this.playerSprite, Phaser.Physics.ARCADE);
         this.playerSprite.anchor.set(0.5);
+        this.playerSprite.body.bounce.set(0.8);
         this.playerSprite.body.drag.set(100);
         this.playerSprite.body.maxVelocity.set(120);
 
@@ -35,9 +66,13 @@ class CoreGame extends Phaser.State {
         this.enemies.physicsBodyType = Phaser.Physics.ARCADE;
 
         for (var i = 0; i < 10; i++) {
-            var c = {x: 100 * i + 50, y: 50};
-            this.enemies.create(c.x, c.y, this.createPolygon(i + 3));
+            this.enemies.create(
+                this.game.rnd.integerInRange(1, this.game.width),
+                this.game.rnd.integerInRange(1, this.game.height),
+                this.polyHelp.createPolygon(i + 3)
+            );
         }
+
     }
 
     update() {
@@ -45,56 +80,39 @@ class CoreGame extends Phaser.State {
 
         // Setup collision handlers:
         this.game.physics.arcade.overlap(this.weapon.bullets, this.enemies, this.enemyCollisionHandler, null, this);
+        this.game.physics.arcade.collide(this.playerSprite, this.walls);
+        this.game.physics.arcade.collide(this.enemies, this.walls);
+        this.game.physics.arcade.collide(this.playerSprite, this.enemies);
+        this.game.physics.arcade.collide(this.enemies, this.enemies);
     }
 
-    render() {
-    }
+    render() {}
 
     levelUp() {
-        this.n++;
-        this.playerSprite.loadTexture(this.createPolygon(this.n, true));
+        this.level++;
+        this.playerSprite.loadTexture(this.polyHelp.createPolygon(this.level, true));
     }
 
     enemyCollisionHandler(bullet, enemy) {
-        // TODO: Make a cool death animation and explosion and shit.
+        // Explode the enemy:
+        let emitter = this.game.add.emitter(enemy.x + enemy.width/2, enemy.y + enemy.height/2, 600);
+        emitter.makeParticles('inkBlot');
+        emitter.start(true, 500, null, 10);
+        this.game.add.sprite(enemy.x, enemy.y, 'inkBlot' + this.game.rnd.integerInRange(1, 6));
+
+        // TODO: Use https://github.com/gorhill/Javascript-Voronoi to see
+        // if breaking the polygon apart would look cool.
+
         enemy.destroy();
         this.levelUp();
-    }
-
-    createPolygon(n, isPlayer) {
-        let bitmapDataWidth = 60;
-        let radius = bitmapDataWidth / 2;
-        let vertices = this.generateNGon({x: bitmapDataWidth / 2, y: bitmapDataWidth / 2}, radius, n);
-        let p = new Phaser.Polygon(vertices);
-
-        let bmd = this.game.add.bitmapData(bitmapDataWidth, bitmapDataWidth);
-
-        for (let i = 0; i < p.points.length; i++) {
-            let p1 = p.points[i];
-            let p2 = p.points[(i+1) % p.points.length];
-            bmd.line(p1.x, p1.y, p2.x, p2.y, isPlayer ? 'green': 'red', 3);
-        }
-        return bmd;
-    }
-
-    generateNGon(center, radius, numSides) {
-        var thetaDelta = (2 * Math.PI)/numSides;
-        var theta = thetaDelta;
-        var points = [];
-
-        for (var n = 0; n < numSides; n++) {
-            var x = center.x + radius * Math.cos(theta);
-            var y = center.y - radius * Math.sin(theta);
-            points.push({x: x, y: y});
-            theta += thetaDelta;
-        }
-        return points;
     }
 
     listenForUserInput() {
         if (this.game.input.keyboard.isDown(Phaser.Keyboard.UP)) {
             this.game.physics.arcade.accelerationFromRotation(
-                this.playerSprite.rotation, 200, this.playerSprite.body.acceleration
+                this.playerSprite.rotation,
+                200,
+                this.playerSprite.body.acceleration
             );
         }
         else {
